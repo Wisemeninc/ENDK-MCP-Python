@@ -224,7 +224,7 @@ async def query_dataset(
     offset: int = 0,
     start: str | None = None,
     end: str | None = None,
-    filter: str | None = None,
+    filter: str | dict | None = None,
     columns: str | None = None,
     sort: str | None = None,
     timezone: str | None = None
@@ -239,7 +239,7 @@ async def query_dataset(
         start: Start datetime for filtering. Formats: 'YYYY-MM-DD', 'YYYY-MM-DDTHH:MM', 
                or dynamic values like 'now', 'now-P1D', 'StartOfDay', 'StartOfMonth', 'StartOfYear'
         end: End datetime for filtering (same formats as start, end point is excluded)
-        filter: JSON object filter, e.g., '{"PriceArea":["DK1"]}' or '{"PriceArea":["DK1","DK2"]}'
+        filter: Filter as JSON string '{"PriceArea":["DK1"]}' or dict {"PriceArea":["DK1"]}
         columns: Comma-separated list of dbColumn names (e.g., 'TimeUTC,PriceArea,DayAheadPriceDKK')
         sort: Column to sort by with optional direction (e.g., 'TimeUTC desc' or 'CO2Emission')
         timezone: Optional timezone for datetime interpretation ('UTC' or default Danish time)
@@ -252,6 +252,7 @@ async def query_dataset(
     """
     # Build query parameters
     params: dict[str, Any] = {}
+    import json as json_module
     
     if limit != 0:
         params["limit"] = limit
@@ -262,8 +263,12 @@ async def query_dataset(
     if end:
         params["end"] = end
     if filter:
-        # Auto-convert OData filter format to JSON format
-        params["filter"] = convert_filter_to_json(filter)
+        # Handle filter as dict or string
+        if isinstance(filter, dict):
+            params["filter"] = json_module.dumps(filter)
+        else:
+            # Auto-convert OData filter format to JSON format
+            params["filter"] = convert_filter_to_json(filter)
     if columns:
         # Auto-convert display names to dbColumn names
         params["columns"] = await convert_columns_to_dbnames(dataset_name, columns)
