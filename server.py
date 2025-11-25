@@ -144,7 +144,7 @@ async def get_dataset_metadata(dataset_name: str) -> str:
 @mcp.tool()
 async def query_dataset(
     dataset_name: str,
-    limit: int = 100,
+    limit: int = 10,
     offset: int = 0,
     start: str | None = None,
     end: str | None = None,
@@ -162,7 +162,7 @@ async def query_dataset(
         start: Start datetime for filtering (ISO format: YYYY-MM-DDTHH:MM)
         end: End datetime for filtering (ISO format: YYYY-MM-DDTHH:MM)
         filter: OData-style filter expression (e.g., '"PriceArea" = "DK1"')
-        columns: Comma-separated list of columns to include
+        columns: Comma-separated list of columns to include (use dbColumn names like 'HourUTC,SpotPriceDKK', NOT display names with spaces)
         sort: Column to sort by with direction (e.g., 'HourUTC DESC')
     
     Example queries:
