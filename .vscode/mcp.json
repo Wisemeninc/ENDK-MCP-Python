@@ -1,0 +1,14 @@
+{
+    "servers": {
+        "energinet-dataservice": {
+            "type": "stdio",
+            "command": "uv",
+            "args": [
+                "--directory",
+                "${workspaceFolder}",
+                "run",
+                "server.py"
+            ]
+        }
+    }
+}

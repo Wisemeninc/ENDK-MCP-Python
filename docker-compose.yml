@@ -1,0 +1,9 @@
+services:
+  energinet-mcp:
+    build: .
+    ports:
+      - "9000:9000"
+    restart: unless-stopped
+    environment:
+      - UVICORN_HOST=0.0.0.0
+      - UVICORN_PORT=9000
