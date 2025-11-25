@@ -73,17 +73,20 @@ async def list_datasets() -> str:
     if data is None:
         return "Unable to fetch dataset list from Energinet Data Service."
     
-    if "error" in data:
+    # API returns a list directly, not wrapped in an object
+    if isinstance(data, dict) and "error" in data:
         return f"Error: {data['error']}"
     
-    datasets = data.get("result", [])
+    # Handle both list response (actual API) and wrapped response (future-proofing)
+    datasets = data if isinstance(data, list) else data.get("result", [])
+    
     if not datasets:
         return "No datasets found."
     
-    # Format dataset list
+    # Format dataset list - API uses datasetName and description fields
     dataset_names = []
     for ds in datasets:
-        name = ds.get("name", "Unknown")
+        name = ds.get("datasetName") or ds.get("name", "Unknown")
         description = ds.get("description", "No description")
         dataset_names.append(f"- {name}: {description}")
     
@@ -98,35 +101,42 @@ async def get_dataset_metadata(dataset_name: str) -> str:
     Args:
         dataset_name: The name of the dataset (e.g., 'Elspotprices', 'CO2Emis')
     """
-    data = await make_api_request(f"meta/{dataset_name}")
+    data = await make_api_request(f"meta/dataset/{dataset_name}")
     
     if data is None:
         return f"Unable to fetch metadata for dataset '{dataset_name}'."
     
-    if "error" in data:
+    if isinstance(data, dict) and "error" in data:
         return f"Error: {data['error']}"
     
-    result = data.get("result", {})
+    # API returns the metadata object directly, not wrapped in "result"
+    result = data if isinstance(data, dict) and "datasetName" in data else data.get("result", {})
     if not result:
         return f"No metadata found for dataset '{dataset_name}'."
     
     # Format metadata
-    output = [f"Dataset: {dataset_name}"]
+    output = [f"Dataset: {result.get('datasetName', dataset_name)}"]
+    
+    if "title" in result:
+        output.append(f"Title: {result['title']}")
     
     if "description" in result:
         output.append(f"Description: {result['description']}")
     
-    if "recordCount" in result:
-        output.append(f"Total Records: {result['recordCount']}")
+    if "resolution" in result:
+        output.append(f"Resolution: {result['resolution']}")
+    
+    if "lastUpdate" in result:
+        output.append(f"Last Updated: {result['lastUpdate']}")
     
     columns = result.get("columns", [])
     if columns:
         output.append("\nColumns:")
         for col in columns:
-            col_name = col.get("name", "Unknown")
-            col_type = col.get("type", "Unknown")
+            col_name = col.get("displayName") or col.get("dbColumn", "Unknown")
+            col_type = col.get("dataType", "Unknown")
             col_desc = col.get("description", "No description")
-            output.append(f"  - {col_name} ({col_type}): {col_desc}")
+            output.append(f"  - {col_name} ({col_type}): {col_desc[:100]}...")
     
     return "\n".join(output)
 

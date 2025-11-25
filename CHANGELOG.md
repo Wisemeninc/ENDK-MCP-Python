@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.3] - 2025-11-25
+
+### Fixed
+- Fixed `list_datasets` tool to handle API response format (returns array directly, not wrapped in "result")
+- Fixed `get_dataset_metadata` tool with correct API endpoint path (`meta/dataset/{name}`)
+- Updated field mappings to match actual API response structure (datasetName, displayName, dataType, etc.)
+
 ## [1.0.0] - 2025-11-25
 
 ### Added
