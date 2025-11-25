@@ -56,6 +56,82 @@ def format_records(records: list[dict], max_records: int = 10) -> str:
     return result
 
 
+def convert_filter_to_json(filter_str: str) -> str:
+    """
+    Convert OData-style filter to JSON format if needed.
+    
+    Converts: "PriceArea" = "DK1"  ->  {"PriceArea":["DK1"]}
+    Passes through JSON format unchanged.
+    """
+    import json
+    import re
+    
+    if not filter_str:
+        return filter_str
+    
+    filter_str = filter_str.strip()
+    
+    # Already JSON format - return as-is
+    if filter_str.startswith('{'):
+        return filter_str
+    
+    # Try to convert OData format: "Column" = "Value" or Column = 'Value'
+    pattern = r'"?(\w+)"?\s*=\s*["\']([^"\']+)["\']'
+    matches = re.findall(pattern, filter_str)
+    
+    if matches:
+        result = {}
+        for col, val in matches:
+            if col in result:
+                result[col].append(val)
+            else:
+                result[col] = [val]
+        return json.dumps(result)
+    
+    return filter_str
+
+
+async def convert_columns_to_dbnames(dataset_name: str, columns: str) -> str:
+    """
+    Convert display names to dbColumn names by fetching metadata.
+    
+    Converts: "Hour DK,Price Area,Gross consumption" -> "HourDK,PriceArea,GrossConsumptionMWh"
+    """
+    if not columns:
+        return columns
+    
+    # Check if columns look like they might have display names (spaces or special chars)
+    if ' ' not in columns and '(' not in columns:
+        return columns  # Already using dbColumn names
+    
+    # Fetch metadata to get column mappings
+    meta = await make_api_request(f"meta/dataset/{dataset_name}")
+    if not meta or not isinstance(meta, dict) or "columns" not in meta:
+        return columns  # Can't convert, return original
+    
+    # Build display name -> dbColumn mapping
+    display_to_db = {}
+    for col in meta.get("columns", []):
+        display_name = col.get("displayName", "")
+        db_column = col.get("dbColumn", "")
+        if display_name and db_column:
+            display_to_db[display_name.lower()] = db_column
+            # Also map without trailing spaces
+            display_to_db[display_name.lower().strip()] = db_column
+    
+    # Convert each column
+    converted = []
+    for col in columns.split(","):
+        col = col.strip()
+        col_lower = col.lower()
+        if col_lower in display_to_db:
+            converted.append(display_to_db[col_lower])
+        else:
+            converted.append(col)  # Keep original if not found
+    
+    return ",".join(converted)
+
+
 @mcp.tool()
 async def list_datasets() -> str:
     """
@@ -144,7 +220,7 @@ async def get_dataset_metadata(dataset_name: str) -> str:
 @mcp.tool()
 async def query_dataset(
     dataset_name: str,
-    limit: int = 100,
+    limit: int = 10000,
     offset: int = 0,
     start: str | None = None,
     end: str | None = None,
@@ -186,9 +262,11 @@ async def query_dataset(
     if end:
         params["end"] = end
     if filter:
-        params["filter"] = filter
+        # Auto-convert OData filter format to JSON format
+        params["filter"] = convert_filter_to_json(filter)
     if columns:
-        params["columns"] = columns
+        # Auto-convert display names to dbColumn names
+        params["columns"] = await convert_columns_to_dbnames(dataset_name, columns)
     if sort:
         params["sort"] = sort
     if timezone:
@@ -236,7 +314,7 @@ async def get_electricity_prices(
     import json
     
     params: dict[str, Any] = {
-        "limit": min(limit, 100),
+        "limit": min(limit, 10000),
         "filter": json.dumps({"PriceArea": [price_area]}),
         "sort": "TimeUTC DESC",
         "columns": "TimeUTC,TimeDK,PriceArea,DayAheadPriceDKK,DayAheadPriceEUR"
@@ -296,7 +374,7 @@ async def get_co2_emissions(
     Returns CO2 emission intensity in g/kWh for different price areas.
     """
     params: dict[str, Any] = {
-        "limit": min(limit, 100),
+        "limit": min(limit, 10000),
         "sort": "Minutes5UTC DESC"
     }
     
@@ -354,7 +432,7 @@ async def get_production_consumption(
     import json
     
     params: dict[str, Any] = {
-        "limit": min(limit, 100),
+        "limit": min(limit, 10000),
         "sort": "HourUTC DESC"
     }
     
