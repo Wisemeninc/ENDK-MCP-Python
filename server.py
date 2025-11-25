@@ -134,7 +134,7 @@ async def get_dataset_metadata(dataset_name: str) -> str:
 @mcp.tool()
 async def query_dataset(
     dataset_name: str,
-    limit: int = 10,
+    limit: int = 10000,
     offset: int = 0,
     start: str | None = None,
     end: str | None = None,
@@ -161,7 +161,7 @@ async def query_dataset(
     """
     # Build query parameters
     params: dict[str, Any] = {
-        "limit": min(limit, 100)  # Cap at 100 for reasonable response sizes
+        "limit": min(limit, 10000)  # Cap at 100 for reasonable response sizes
     }
     
     if offset > 0:
@@ -217,7 +217,7 @@ async def get_electricity_prices(
     Returns hourly spot prices in EUR/MWh and DKK/MWh.
     """
     params: dict[str, Any] = {
-        "limit": min(limit, 100),
+        "limit": min(limit, 10000),
         "filter": f'"PriceArea" = "{price_area}"',
         "sort": "HourUTC DESC",
         "columns": "HourUTC,HourDK,PriceArea,SpotPriceDKK,SpotPriceEUR"
@@ -262,7 +262,7 @@ async def get_electricity_prices(
 
 @mcp.tool()
 async def get_co2_emissions(
-    limit: int = 24,
+    limit: int = 240,
     start: str | None = None,
     end: str | None = None
 ) -> str:
@@ -277,7 +277,7 @@ async def get_co2_emissions(
     Returns CO2 emission intensity in g/kWh for different price areas.
     """
     params: dict[str, Any] = {
-        "limit": min(limit, 100),
+        "limit": min(limit, 10000),
         "sort": "Minutes5UTC DESC"
     }
     
@@ -317,7 +317,7 @@ async def get_co2_emissions(
 @mcp.tool()
 async def get_production_consumption(
     price_area: str | None = None,
-    limit: int = 24,
+    limit: int = 240,
     start: str | None = None,
     end: str | None = None
 ) -> str:
@@ -333,7 +333,7 @@ async def get_production_consumption(
     Returns production (wind, solar, thermal) and consumption data in MWh.
     """
     params: dict[str, Any] = {
-        "limit": min(limit, 100),
+        "limit": min(limit, 10000),
         "sort": "HourUTC DESC"
     }
     
