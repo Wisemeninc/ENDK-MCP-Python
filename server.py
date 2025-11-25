@@ -144,7 +144,7 @@ async def get_dataset_metadata(dataset_name: str) -> str:
 @mcp.tool()
 async def query_dataset(
     dataset_name: str,
-    limit: int = 10,
+    limit: int = 1000,
     offset: int = 0,
     start: str | None = None,
     end: str | None = None,
@@ -171,7 +171,7 @@ async def query_dataset(
     """
     # Build query parameters
     params: dict[str, Any] = {
-        "limit": min(limit, 100)  # Cap at 100 for reasonable response sizes
+        "limit": min(limit, 1000)  # Cap at 100 for reasonable response sizes
     }
     
     if offset > 0:
