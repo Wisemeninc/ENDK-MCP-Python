@@ -144,36 +144,41 @@ async def get_dataset_metadata(dataset_name: str) -> str:
 @mcp.tool()
 async def query_dataset(
     dataset_name: str,
-    limit: int = 1000,
+    limit: int = 100,
     offset: int = 0,
     start: str | None = None,
     end: str | None = None,
     filter: str | None = None,
     columns: str | None = None,
-    sort: str | None = None
+    sort: str | None = None,
+    timezone: str | None = None
 ) -> str:
     """
     Query a dataset from Energinet Data Service.
     
     Args:
-        dataset_name: The name of the dataset to query (e.g., 'Elspotprices', 'CO2Emis')
-        limit: Maximum number of records to return (default: 10, max: 100)
+        dataset_name: The name of the dataset to query (e.g., 'DayAheadPrices', 'CO2Emis')
+        limit: Maximum number of records to return (default: 100, use 0 for all records)
         offset: Number of records to skip for pagination (default: 0)
-        start: Start datetime for filtering (ISO format: YYYY-MM-DDTHH:MM)
-        end: End datetime for filtering (ISO format: YYYY-MM-DDTHH:MM)
-        filter: OData-style filter expression (e.g., '"PriceArea" = "DK1"')
-        columns: Comma-separated list of columns to include (use dbColumn names like 'HourUTC,SpotPriceDKK', NOT display names with spaces)
-        sort: Column to sort by with direction (e.g., 'HourUTC DESC')
+        start: Start datetime for filtering. Formats: 'YYYY-MM-DD', 'YYYY-MM-DDTHH:MM', 
+               or dynamic values like 'now', 'now-P1D', 'StartOfDay', 'StartOfMonth', 'StartOfYear'
+        end: End datetime for filtering (same formats as start, end point is excluded)
+        filter: JSON object filter, e.g., '{"PriceArea":["DK1"]}' or '{"PriceArea":["DK1","DK2"]}'
+        columns: Comma-separated list of dbColumn names (e.g., 'TimeUTC,PriceArea,DayAheadPriceDKK')
+        sort: Column to sort by with optional direction (e.g., 'TimeUTC desc' or 'CO2Emission')
+        timezone: Optional timezone for datetime interpretation ('UTC' or default Danish time)
     
     Example queries:
-    - Get latest electricity spot prices: dataset_name='Elspotprices', limit=5, sort='HourUTC DESC'
-    - Get prices for DK1 area: dataset_name='Elspotprices', filter='"PriceArea" = "DK1"'
+    - Latest day-ahead prices: dataset_name='DayAheadPrices', limit=5, sort='TimeUTC desc'
+    - Prices for DK1: dataset_name='DayAheadPrices', filter='{"PriceArea":["DK1"]}'
+    - Last 24 hours CO2: dataset_name='CO2Emis', start='now-P1D', end='now'
+    - Specific date range: dataset_name='CO2Emis', start='2025-01-01', end='2025-01-02'
     """
     # Build query parameters
-    params: dict[str, Any] = {
-        "limit": min(limit, 1000)  # Cap at 100 for reasonable response sizes
-    }
+    params: dict[str, Any] = {}
     
+    if limit != 0:
+        params["limit"] = limit
     if offset > 0:
         params["offset"] = offset
     if start:
@@ -186,6 +191,8 @@ async def query_dataset(
         params["columns"] = columns
     if sort:
         params["sort"] = sort
+    if timezone:
+        params["timezone"] = timezone
     
     data = await make_api_request(f"dataset/{dataset_name}", params)
     
@@ -226,11 +233,13 @@ async def get_electricity_prices(
     
     Returns hourly spot prices in EUR/MWh and DKK/MWh.
     """
+    import json
+    
     params: dict[str, Any] = {
         "limit": min(limit, 100),
-        "filter": f'"PriceArea" = "{price_area}"',
-        "sort": "HourUTC DESC",
-        "columns": "HourUTC,HourDK,PriceArea,SpotPriceDKK,SpotPriceEUR"
+        "filter": json.dumps({"PriceArea": [price_area]}),
+        "sort": "TimeUTC DESC",
+        "columns": "TimeUTC,TimeDK,PriceArea,DayAheadPriceDKK,DayAheadPriceEUR"
     }
     
     if start:
@@ -238,7 +247,7 @@ async def get_electricity_prices(
     if end:
         params["end"] = end
     
-    data = await make_api_request("dataset/Elspotprices", params)
+    data = await make_api_request("dataset/DayAheadPrices", params)
     
     if data is None:
         return f"Unable to fetch electricity prices for {price_area}."
@@ -251,13 +260,13 @@ async def get_electricity_prices(
     if not records:
         return f"No electricity prices found for {price_area}."
     
-    output = [f"Electricity Spot Prices for {price_area}"]
+    output = [f"Day-Ahead Electricity Prices for {price_area}"]
     output.append(f"(Prices in DKK/MWh and EUR/MWh)\n")
     
     for record in records:
-        hour_dk = record.get("HourDK", record.get("HourUTC", "Unknown"))
-        price_dkk = record.get("SpotPriceDKK", "N/A")
-        price_eur = record.get("SpotPriceEUR", "N/A")
+        time_dk = record.get("TimeDK", record.get("TimeUTC", "Unknown"))
+        price_dkk = record.get("DayAheadPriceDKK", "N/A")
+        price_eur = record.get("DayAheadPriceEUR", "N/A")
         
         # Format prices
         if isinstance(price_dkk, (int, float)):
@@ -265,7 +274,7 @@ async def get_electricity_prices(
         if isinstance(price_eur, (int, float)):
             price_eur = f"{price_eur:.2f}"
         
-        output.append(f"{hour_dk}: {price_dkk} DKK/MWh ({price_eur} EUR/MWh)")
+        output.append(f"{time_dk}: {price_dkk} DKK/MWh ({price_eur} EUR/MWh)")
     
     return "\n".join(output)
 
@@ -342,13 +351,15 @@ async def get_production_consumption(
     
     Returns production (wind, solar, thermal) and consumption data in MWh.
     """
+    import json
+    
     params: dict[str, Any] = {
         "limit": min(limit, 100),
         "sort": "HourUTC DESC"
     }
     
     if price_area:
-        params["filter"] = f'"PriceArea" = "{price_area}"'
+        params["filter"] = json.dumps({"PriceArea": [price_area]})
     if start:
         params["start"] = start
     if end:
